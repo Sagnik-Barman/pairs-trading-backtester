@@ -35,7 +35,7 @@ class BacktestConfig:
     exit_z: float = 0.5
     stop_z: float = 4.0
     lookback: int = 30          # rolling window for z-score
-    cost_bps: float = 5.0       # round-trip transaction cost, in basis points, per leg
+    cost_bps: float = 5.0       # one-way cost in bps of traded notional, charged on both legs at entry and at exit
     capital: float = 100_000.0
     position_fraction: float = 0.5  # fraction of capital deployed on the A leg per trade
 
@@ -88,7 +88,8 @@ def run_backtest(price_a: pd.Series, price_b: pd.Series, beta: float,
             exited = abs(zt) <= cfg.exit_z or abs(zt) >= cfg.stop_z
             if exited:
                 pnl = cur_qty * (spread.iloc[i] - entry_price_spread)
-                cost = abs(cur_qty) * (cfg.cost_bps / 1e4) * spread.iloc[i]
+                notional = price_a.loc[t] + abs(beta) * price_b.loc[t]   # both legs, per share of A
+                cost = abs(cur_qty) * (cfg.cost_bps / 1e4) * notional
                 trade_pnls.append(pnl - cost)
                 cur_pos = 0.0
                 cur_qty = 0.0
@@ -103,7 +104,9 @@ def run_backtest(price_a: pd.Series, price_b: pd.Series, beta: float,
     spread_change = spread.diff().fillna(0.0)
     held_qty = quantity.shift(1).fillna(0.0)
     qty_change = quantity.diff().abs().fillna(0.0)
-    cost = qty_change * (cfg.cost_bps / 1e4) * spread.abs()
+    # Costs are charged on the notional actually traded on BOTH legs (|A| + |beta| * |B| per
+    # share of A), not on the spread value, which can be close to zero.
+    cost = qty_change * (cfg.cost_bps / 1e4) * (a + abs(beta) * b)
 
     pnl_series = held_qty * spread_change - cost
     daily_returns = pnl_series / cfg.capital

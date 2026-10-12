@@ -5,6 +5,40 @@ together over the long run, trade the *spread* between them whenever it
 strays too far from its historical relationship, and profit when it snaps
 back — regardless of which direction the overall market moves.
 
+## Real NSE results (`run_real.py`)
+
+```bash
+pip install yfinance statsmodels
+python run_real.py          # downloads once, then uses the cached prices in data/
+```
+
+Pairs and hedge ratios are chosen on 2015-2022 only; 2023 onwards is traded
+untouched. Only within-sector pairs are tested (41 tests across banks, IT,
+energy and FMCG), with a Bonferroni threshold of 0.05 / 41.
+
+| | Pairs | Test Sharpe | Test return | Max drawdown |
+|---|---|---|---|---|
+| Bonferroni screen (p <= 0.00122) | 3 | 0.46 | +8.1% | -4.5% |
+| Naive screen (p <= 0.05) | 7 | -0.03 | -0.7% | -3.6% |
+
+Costs are 5 bps one-way on the notional of **both legs**, at entry and at
+exit (`cost_sensitivity.csv` has the full sweep):
+
+| Cost per leg | 0 bps | 5 bps | 10 bps | 20 bps |
+|---|---|---|---|---|
+| Sharpe | 0.62 | 0.46 | 0.29 | -0.04 |
+
+Break-even is about 18 bps per leg. **The Sharpe is not statistically
+significant**: over 3.7 test years its standard error is about 0.55. Say
+this before an interviewer does.
+
+Bug fixed (Oct 2026): costs used to be charged on the *spread value*
+(A - beta*B), which can be close to zero, instead of the notional traded.
+That overstated the result (Sharpe 0.60, +10.9%).
+
+On NSE you cannot hold a cash short overnight, so the short leg would be
+traded through single-stock futures (all 20 names here have F&O contracts).
+
 ## Why cointegration, not correlation
 
 Two stocks can be highly *correlated* (they both trend upward) while the
@@ -86,12 +120,11 @@ Be ready to volunteer these — a quant interviewer will ask, and knowing
 the limitations of your own backtest unprompted is worth more than the
 Sharpe ratio itself:
 
-- **This is in-sample.** The strategy parameters (entry/exit z, lookback)
-  were not tuned on a separate out-of-sample period. A real evaluation
-  needs a walk-forward split (fit hedge ratio and thresholds on a training
-  window, trade on the next window, roll forward) — see `pairs_selection.py`
-  for where you'd add a rolling re-estimation of `β`.
-- **Transaction costs here are just a flat bps charge.** Real costs also
+- **`run_demo.py` is in-sample; `run_real.py` is not.** The real-data run
+  freezes pairs and hedge ratios on 2015-2022 and trades 2023 onwards. The
+  hedge ratio is still a single fixed OLS estimate; a rolling or
+  Kalman-filter estimate is the natural next step.
+- **Transaction costs are a flat bps charge on traded notional.** Real costs also
   include bid-ask spread, market impact for size, and — critically for
   short legs — **borrow costs and short-sale availability**, which this
   doesn't model at all.
